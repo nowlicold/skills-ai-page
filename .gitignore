@@ -1,0 +1,29 @@
+# 环境与密钥
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+
+# Node
+node_modules/
+
+# 构建与产物
+dist/
+dist-ssr/
+*.local
+
+# 日志与编辑器
+*.log
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
