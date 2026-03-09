@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import tempfile
 import shutil
 import traceback
@@ -231,6 +232,56 @@ class ExecuteResult(BaseModel):
 _BACKEND_ENV_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
 
 
+def _validate_parameters_schema(params: dict, schema: list) -> list[str]:
+    """
+    按 metadata.parameters 校验请求参数：必填、类型、长度（若有）。
+    返回错误信息列表，空表示通过。
+    """
+    if not schema or not isinstance(schema, list):
+        return []
+    params = params or {}
+    errors: list[str] = []
+    for item in schema:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("name")
+        if not name:
+            continue
+        required = item.get("required", False)
+        param_type = (item.get("type") or "string").lower()
+        max_length = item.get("max_length")  # 可选
+        val = params.get(name)
+        raw_str = None if val is None else str(val).strip()
+
+        if required and (raw_str is None or raw_str == ""):
+            label = item.get("label") or name
+            errors.append(f"「{label}」为必填")
+            continue
+        if raw_str is None or raw_str == "":
+            continue
+
+        if max_length is not None and len(raw_str) > int(max_length):
+            label = item.get("label") or name
+            errors.append(f"「{label}」长度不能超过 {max_length}")
+            continue
+
+        if param_type == "number":
+            try:
+                float(raw_str)
+            except ValueError:
+                label = item.get("label") or name
+                errors.append(f"「{label}」应为数字")
+        elif param_type == "url":
+            if not (raw_str.startswith("http://") or raw_str.startswith("https://")):
+                label = item.get("label") or name
+                errors.append(f"「{label}」应为有效 URL（以 http:// 或 https:// 开头）")
+        elif param_type == "youtube_video_id":
+            if not re.search(r"^[a-zA-Z0-9_-]{11}$", raw_str) and "youtube.com" not in raw_str and "youtu.be" not in raw_str:
+                label = item.get("label") or name
+                errors.append(f"「{label}」应为 YouTube 视频 ID 或链接")
+    return errors
+
+
 def _validate_execute_params(params: dict) -> str:
     """校验执行参数，返回用于执行的 prompt（可为合成字符串）；校验失败时抛出 HTTPException。"""
     if not params:
@@ -294,12 +345,20 @@ async def execute(req: ExecuteRequest):
     if not os.environ.get("ANTHROPIC_API_KEY"):
         raise HTTPException(status_code=503, detail="未配置 ANTHROPIC_API_KEY")
 
+    meta = load_metadata(req.skill_name)
+    schema = (meta or {}).get("parameters") if meta else None
+    if schema and isinstance(schema, list):
+        param_errors = _validate_parameters_schema(req.parameters or {}, schema)
+        if param_errors:
+            raise HTTPException(
+                status_code=400,
+                detail="参数校验失败：" + "；".join(param_errors),
+            )
+
     try:
         prompt = _validate_execute_params(req.parameters or {})
     except HTTPException:
         raise
-
-    meta = load_metadata(req.skill_name)
     tmp_dir = None
     sdk_only = _is_sdk_only_mode(req)
 

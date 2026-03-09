@@ -1,0 +1,65 @@
+{
+  "name": "felo-web-fetch",
+  "description": "从指定 URL 提取网页结构化内容，支持 HTML/Markdown/Text 输出格式及 CSS 选择器过滤",
+  "created_at": "2026-03-09T02:11:35.517063Z",
+  "author": "anonymous",
+  "ui_config": {
+    "type": "chat",
+    "supports_progress": false,
+    "output_types": [
+      "markdown",
+      "text"
+    ]
+  },
+  "parameters": [
+    {
+      "name": "url",
+      "type": "url",
+      "label": "网页 URL",
+      "required": true,
+      "description": "需要提取内容的网页地址"
+    },
+    {
+      "name": "output_format",
+      "type": "string",
+      "label": "输出格式",
+      "required": false,
+      "description": "输出格式：html、markdown 或 text，默认 markdown"
+    },
+    {
+      "name": "crawl_mode",
+      "type": "string",
+      "label": "抓取模式",
+      "required": false,
+      "description": "抓取模式：fast（快速）或 fine（精细），默认 fast"
+    },
+    {
+      "name": "target_selector",
+      "type": "string",
+      "label": "CSS 选择器",
+      "required": false,
+      "description": "可选，仅提取匹配该 CSS 选择器的内容，如 article.main"
+    }
+  ],
+  "execution": {
+    "type": "http",
+    "method": "POST",
+    "url": "https://openapi.felo.ai/v2/web-extract",
+    "headers": {
+      "Authorization": "Bearer {{ENV:FELO_API_KEY}}",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "url": "{{url}}",
+      "output_format": "{{output_format}}",
+      "crawl_mode": "{{crawl_mode}}",
+      "target_selector": "{{target_selector}}"
+    },
+    "response": {
+      "success_codes": [
+        200
+      ],
+      "format": "text"
+    }
+  }
+}

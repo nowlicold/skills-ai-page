@@ -1,9 +1,12 @@
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-
+import urllib.request
+import urllib.error
+from urllib.parse import urlparse
 from dotenv import load_dotenv
-from fastapi import APIRouter, File, UploadFile, HTTPException
+from fastapi import APIRouter, File, Form, UploadFile, HTTPException
+from pydantic import BaseModel
 
 from app.services.skill_analyzer import analyze_skill
 from app.services.skill_adapters import try_adapt
@@ -37,8 +40,8 @@ def list_skills():
 @router.post("/skills/upload")
 async def upload_skill(
     file: UploadFile = File(...),
-    source_hint: str | None = None,
-    origin_url: str | None = None,
+    source_hint: str | None = Form(None),
+    origin_url: str | None = Form(None),
 ):
     """上传 SKILL.md；多平台适配器优先识别来源并转换，再与 Claude 分析结果合并，任意来源的 skill 均可被正确执行。"""
     if not file.filename or not file.filename.endswith(".md"):
@@ -76,6 +79,87 @@ async def upload_skill(
     meta = {
         "name": name,
         "description": _pick("description") or "上传的 Skill",
+        "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "author": "anonymous",
+        "ui_config": _pick("ui_config") or {
+            "type": "chat",
+            "supports_progress": False,
+            "output_types": ["text", "markdown"],
+        },
+    }
+    if _pick("parameters") is not None:
+        meta["parameters"] = _pick("parameters")
+    if _pick("execution"):
+        meta["execution"] = _pick("execution")
+    (skill_dir / "metadata.json").write_text(
+        json.dumps(meta, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return meta
+
+
+def _fetch_url_to_text(url: str) -> str:
+    """从 URL 拉取内容为文本。GitHub blob 自动转为 raw。"""
+    u = url.strip()
+    if not u.startswith("http://") and not u.startswith("https://"):
+        raise HTTPException(status_code=400, detail="请输入有效的 http(s) URL")
+    # GitHub 网页 URL 转 raw
+    if "github.com" in u and "/blob/" in u:
+        u = u.replace("github.com", "raw.githubusercontent.com", 1).replace("/blob/", "/", 1)
+    req = urllib.request.Request(u, headers={"User-Agent": "SkillsAI-Platform/1.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return resp.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as e:
+        raise HTTPException(status_code=400, detail=f"拉取失败（HTTP {e.code}）")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"拉取失败：{e!s}")
+
+
+def _skill_name_from_url(url: str) -> str:
+    """从 URL 路径推断 skill 目录名，如 .../felo-web-fetch/README.md -> felo-web-fetch。"""
+    path = urlparse(url).path
+    parts = [p for p in path.split("/") if p and p != "blob"]
+    if len(parts) >= 2 and parts[-1].lower().endswith(".md"):
+        return parts[-2]
+    if parts and parts[-1].lower().endswith(".md"):
+        return Path(parts[-1]).stem or "skill-imported"
+    return "skill-imported"
+
+
+class ImportFromUrlRequest(BaseModel):
+    url: str
+    source_hint: str | None = None
+
+
+@router.post("/skills/import-from-url")
+async def import_skill_from_url(body: ImportFromUrlRequest):
+    """从链接拉取 .md 内容并导入为 skill（与上传后流程一致：适配器 + 分析 → 写入 metadata）。"""
+    if _BACKEND_ENV.exists():
+        load_dotenv(_BACKEND_ENV, override=True)
+    text = _fetch_url_to_text(body.url.strip())
+    if not text.strip():
+        raise HTTPException(status_code=400, detail="该链接返回内容为空")
+    name = _skill_name_from_url(body.url.strip())
+    if name.lower() == "skill":
+        name = "skill-imported"
+    skill_dir = SKILLS_DIR / name
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    (skill_dir / "SKILL.md").write_text(text, encoding="utf-8")
+
+    hints = UploadHints(url=body.url.strip(), source=body.source_hint, filename=None)
+    adapter_fragment = try_adapt(text, hints)
+    analyzed = analyze_skill(text)
+
+    def _pick(key: str, default=None):
+        val = adapter_fragment.get(key) if adapter_fragment else None
+        if val is None:
+            val = analyzed.get(key)
+        return val if val is not None else default
+
+    meta = {
+        "name": name,
+        "description": _pick("description") or "从链接导入的 Skill",
         "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "author": "anonymous",
         "ui_config": _pick("ui_config") or {

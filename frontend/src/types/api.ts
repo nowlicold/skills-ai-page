@@ -12,6 +12,10 @@ export interface ParameterSchema {
   placeholder?: string
   required?: boolean
   description?: string
+  /** 默认值，用于表单初始值 */
+  default?: string | number
+  /** 最大长度（可选） */
+  max_length?: number
 }
 
 export interface SkillMetadata {

@@ -7,7 +7,8 @@ interface SkillsState {
   loading: boolean
   error: string | null
   fetchSkills: () => Promise<void>
-  uploadSkill: (file: File) => Promise<SkillMetadata | null>
+  uploadSkill: (file: File, options?: { sourceHint?: string; originUrl?: string }) => Promise<SkillMetadata | null>
+  importFromUrl: (url: string, options?: { sourceHint?: string }) => Promise<SkillMetadata | null>
   clearError: () => void
 }
 
@@ -29,15 +30,29 @@ export const useSkillsStore = create<SkillsState>((set) => ({
     }
   },
 
-  uploadSkill: async (file: File) => {
+  uploadSkill: async (file: File, options?: { sourceHint?: string; originUrl?: string }) => {
     set({ error: null })
     try {
-      const skill = await api.uploadSkill(file)
+      const skill = await api.uploadSkill(file, options)
       set((s) => ({ skills: [skill, ...s.skills] }))
       return skill
     } catch (e) {
       set({
         error: e instanceof Error ? e.message : "上传失败",
+      })
+      return null
+    }
+  },
+
+  importFromUrl: async (url: string, options?: { sourceHint?: string }) => {
+    set({ error: null })
+    try {
+      const skill = await api.importSkillFromUrl(url, options)
+      set((s) => ({ skills: [skill, ...s.skills] }))
+      return skill
+    } catch (e) {
+      set({
+        error: e instanceof Error ? e.message : "从链接导入失败",
       })
       return null
     }

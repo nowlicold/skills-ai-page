@@ -24,9 +24,36 @@ export async function listSkills(): Promise<SkillMetadata[]> {
   return fetchApi<SkillMetadata[]>("/api/skills")
 }
 
-export async function uploadSkill(file: File): Promise<SkillMetadata> {
+export interface UploadSkillOptions {
+  sourceHint?: string
+  originUrl?: string
+}
+
+export interface ImportFromUrlOptions {
+  sourceHint?: string
+}
+
+export async function importSkillFromUrl(
+  url: string,
+  options?: ImportFromUrlOptions
+): Promise<SkillMetadata> {
+  return fetchApi<SkillMetadata>("/api/skills/import-from-url", {
+    method: "POST",
+    body: JSON.stringify({
+      url: url.trim(),
+      source_hint: options?.sourceHint?.trim() || undefined,
+    }),
+  })
+}
+
+export async function uploadSkill(
+  file: File,
+  options?: UploadSkillOptions
+): Promise<SkillMetadata> {
   const form = new FormData()
   form.append("file", file)
+  if (options?.sourceHint?.trim()) form.append("source_hint", options.sourceHint.trim())
+  if (options?.originUrl?.trim()) form.append("origin_url", options.originUrl.trim())
   const res = await fetch(`${API_BASE}/api/skills/upload`, {
     method: "POST",
     body: form,

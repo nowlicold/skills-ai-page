@@ -1,9 +1,13 @@
 """适配器注册表：上传时按顺序尝试 detect，命中则 adapt，否则交给 Claude 分析器。"""
 from app.services.skill_adapters.base import CanonicalFragment, UploadHints
+from app.services.skill_adapters.cursor import CursorAdapter
 from app.services.skill_adapters.frontmatter import FrontmatterAdapter
+from app.services.skill_adapters.github import GitHubAdapter
 
-# 按优先级排列；先注册的先尝试
+# 按优先级排列；先注册的先尝试（Cursor/ GitHub 依赖 source_hint / origin_url 或内容特征）
 adapters_registry: list[object] = [
+    CursorAdapter(),
+    GitHubAdapter(),
     FrontmatterAdapter(),
 ]
 

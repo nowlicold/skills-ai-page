@@ -643,6 +643,42 @@ async def execute_skill(skill_name: str, parameters: dict):
   - 编辑器：Monaco Editor/CodeMirror
 - **决策时机**: 根据用户反馈决定优先级
 
+## 后续迭代规划
+
+> 基于当前 MVP + 参数/动态表单/result_format/AI Page/多平台适配器骨架 的完成情况，建议按以下阶段迭代。
+
+### 当前已完成（可视为 MVP+）
+
+- 上传/列表/对话/执行（SDK 主路径 + execution 回退）
+- 参数 schema + 动态表单（DynamicParamForm）+ 填表即执行
+- 执行返回 result_format + result_data，DynamicUI 按格式渲染（字幕、来源、链接、文本）
+- AI Page 布局：描述 + 参数区 + 对话/结果区
+- 多平台适配器骨架（Frontmatter 适配器 + 上传时 try_adapt → 与 analyze_skill 合并）
+- Windows 启动说明（run_win.py）
+
+### V1：体验与扩展（建议下一轮）
+
+| 方向 | 内容 | 优先级 |
+|------|------|--------|
+| **多平台适配** | 增加 Cursor / GitHub / 通用 SKILL 等适配器，完善 detect/adapt；上传 API 支持 source_hint、origin_url 透传 | 高 |
+| **参数与校验** | 执行前按 metadata.parameters 做必填、类型、长度等校验；表单支持默认值、placeholder 与错误提示 | 高 |
+| **result_format 扩展** | 新增 execution.response.format 类型（如 web_extract 结构化摘要），对应 _extract_result_data + 前端组件 | 中 |
+| **体验打磨** | 执行中 loading、错误态与重试、空状态文案；移动端布局；可选「表单 / 对话」切换 | 中 |
+| **文档与配置** | README/design-mvp 与实现状态同步；API Key 配置说明（哪些 skill 需哪些 key）集中写清 | 低 |
+
+### V2：安全与规模
+
+- **安全**：执行隔离（容器/沙箱或白名单 CLI）、skill 审核策略（见 Open Questions 1）。
+- **数据**：用户/技能数上来后引入数据库（见 Open Questions 2）；metadata 与执行记录可持久化。
+- **认证**：如需多租户或「我的 skills」，接入 OAuth 或自建登录（见 Open Questions 3）。
+
+### V3：生态与商业化（可选）
+
+- **Skills 市场**：公开/私有、评分、付费等（见 Open Questions 4）。
+- **更多 UI 类型**：图表、画布、编辑器等（见 Open Questions 5）。
+
+**建议**：先做完 V1 的「多平台适配 + 参数校验 + 1～2 个 result_format 扩展」，再根据使用反馈决定是否进入 V2（安全/数据/认证）。
+
 ## References
 
 - [Claude Agent SDK - Overview](https://platform.claude.com/docs/en/agent-sdk/overview)
