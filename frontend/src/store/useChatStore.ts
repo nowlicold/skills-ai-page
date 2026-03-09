@@ -98,7 +98,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       loading: true,
     }))
     try {
-      const result = await api.execute(skillName, params, { executionMode: "sdk_only" })
+      const result = await api.execute(skillName, params)
       const content =
         result.status === "success"
           ? result.content ?? (result.url ? `[点击查看](${result.url})` : "完成")
@@ -109,6 +109,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
         url: result.url,
         progress: result.progress,
         error: result.error,
+        result_format: result.result_format,
+        result_data: result.result_data,
       }
       set((s) => {
         const next = [...s.messages]

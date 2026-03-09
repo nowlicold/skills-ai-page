@@ -1,29 +1,30 @@
 ---
-name: felo-youtube-subtitling
-description: "Fetch YouTube video subtitles/captions using Felo YouTube Subtitling API. Use when users ask to get YouTube subtitles, extract captions from a video, fetch transcript by video ID or URL, or when explicit commands like /felo-youtube-subtitling are used. Supports language and optional timestamps."
+name: felo-web-fetch
+description: "Fetch web page content from a URL using Felo Web Extract API. Use when users ask to scrape/capture/fetch webpage content, get article text from URL, convert page to markdown/text, or when explicit commands like /felo-web-fetch are used. Supports html, text, markdown output and readability mode."
 ---
 
-# Felo YouTube Subtitling Skill
+# Felo Web Fetch Skill
 
 ## When to Use
 
 Trigger this skill when the user wants to:
 
-- Get subtitles or captions from a YouTube video
-- Extract transcript by video ID or video URL
-- Fetch subtitles in a specific language (e.g. en, zh-CN)
-- Get subtitles with timestamps for analysis or translation
+- Fetch or scrape content from a webpage URL
+- Get article/main text from a link
+- Convert a webpage to Markdown or plain text
+- Capture readable content from a URL for summarization or processing
 
 Trigger keywords (examples):
 
-- YouTube subtitles, get captions, video transcript, extract subtitles, YouTube 字幕
-- Explicit: `/felo-youtube-subtitling`, "use felo youtube subtitling"
+- fetch webpage, scrape URL, fetch page content, web fetch, url to markdown
+- Explicit: `/felo-web-fetch`, "use felo web fetch"
+- Same intent in other languages (e.g. 网页抓取, 提取网页内容) also triggers this skill
 
 Do NOT use for:
 
-- Real-time search (use `felo-search`)
-- Web page content (use `felo-web-fetch`)
+- Real-time search or Q&A (use `felo-search`)
 - Generating slides (use `felo-slides`)
+- Local file content (read files directly)
 
 ## Setup
 
@@ -54,108 +55,146 @@ $env:FELO_API_KEY="your-api-key-here"
 **Script** (from repo):
 
 ```bash
-node felo-youtube-subtitling/scripts/run_youtube_subtitling.mjs --video-code "dQw4w9WgXcQ" [options]
+node felo-web-fetch/scripts/run_web_fetch.mjs --url "https://example.com/article" [options]
 ```
 
-**Packaged CLI** (after `npm install -g felo-ai`):
+**Packaged CLI** (after `npm install -g felo-ai`): same options, with short forms allowed:
 
 ```bash
-felo youtube-subtitling -v "dQw4w9WgXcQ" [options]
-# Short forms: -v (video-code), -l (language), -j (json)
+felo web-fetch -u "https://example.com" [options]
+# Short forms: -u (url), -f (format), -t (timeout, seconds), -j (json)
 ```
 
 Options:
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--video-code` / `-v` | (required) | YouTube **video URL** or **video ID** (e.g. `https://youtube.com/watch?v=ID` or `dQw4w9WgXcQ`) |
-| `--language` / `-l` | - | Subtitle language code (e.g. `en`, `zh-CN`) |
-| `--with-time` | false | Include start/duration timestamps in each segment |
+| `--url` | (required) | Webpage URL to fetch |
+| `--format` | markdown | Output format: `html`, `text`, `markdown` |
+| `--target-selector` | - | CSS selector: fetch only this element (e.g. `article.main`, `#content`) |
+| `--wait-for-selector` | - | Wait for this selector before fetching (e.g. dynamic content) |
+| `--readability` | false | Enable readability processing (main content only) |
+| `--crawl-mode` | fast | `fast` or `fine` |
+| `--timeout` | 60000 (script) / 60 (CLI) | Request timeout: script uses **milliseconds**, CLI uses **seconds** (e.g. `-t 90`) |
 | `--json` / `-j` | false | Print full API response as JSON |
 
-You can pass either a **full YouTube link** or the **11-character video ID**:
+### How to write instructions (target_selector + output_format)
 
-- Supported URLs: `https://www.youtube.com/watch?v=ID`, `https://youtu.be/ID`, `https://youtube.com/embed/ID`
-- Or plain ID: `dQw4w9WgXcQ`
+When the user wants a **specific part** of the page or a **specific output format**, phrase the command like this:
+
+- **Output format**: "Fetch as **text**" / "Get **markdown**" / "Return **html**" → use `--format text`, `--format markdown`, or `--format html`.
+- **Target one element**: "Only the **main article**" / "Just the **content inside** `#main`" / "Fetch only **article.main-content**" → use `--target-selector "article.main"` or the selector they give (e.g. `#main`, `.main-content`, `article .post`).
+
+Examples of user intents and equivalent commands:
+
+| User intent | Command |
+|-------------|---------|
+| "Fetch this page as plain text" | `--url "..." --format text` |
+| "Get only the main content area" | `--url "..." --target-selector "main"` or `article` |
+| "Fetch the div with id=content as markdown" | `--url "..." --target-selector "#content" --format markdown` |
+| "Just the article body, as HTML" | `--url "..." --target-selector "article .body" --format html` |
 
 Examples:
 
 ```bash
-# With video URL
-node felo-youtube-subtitling/scripts/run_youtube_subtitling.mjs --video-code "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-felo youtube-subtitling -v "https://youtu.be/dQw4w9WgXcQ"
+# Basic: fetch as Markdown
+node felo-web-fetch/scripts/run_web_fetch.mjs --url "https://example.com"
 
-# With video ID
-node felo-youtube-subtitling/scripts/run_youtube_subtitling.mjs -v "dQw4w9WgXcQ" --language zh-CN
+# Article-style with readability
+node felo-web-fetch/scripts/run_web_fetch.mjs --url "https://example.com/article" --readability --format markdown
 
-# With timestamps
-node felo-youtube-subtitling/scripts/run_youtube_subtitling.mjs -v "dQw4w9WgXcQ" --with-time --json
+# Raw HTML
+node felo-web-fetch/scripts/run_web_fetch.mjs --url "https://example.com" --format html --json
+
+# Only the element matching a CSS selector (e.g. main article)
+node felo-web-fetch/scripts/run_web_fetch.mjs --url "https://example.com" --target-selector "article.main" --format markdown
+
+# Specific output format + target selector
+node felo-web-fetch/scripts/run_web_fetch.mjs --url "https://example.com" --target-selector "#content" --format text
 ```
 
 ### Option B: Call API with curl
 
 ```bash
-curl -X GET "https://openapi.felo.ai/v2/youtube/subtitling?video_code=dQw4w9WgXcQ" \
-  -H "Authorization: Bearer $FELO_API_KEY"
+curl -X POST "https://openapi.felo.ai/v2/web/extract" \
+  -H "Authorization: Bearer $FELO_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com", "output_format": "markdown", "with_readability": true}'
 ```
 
 ## API Reference (summary)
 
-- **Endpoint**: `GET /v2/youtube/subtitling`
+- **Endpoint**: `POST /v2/web/extract`
 - **Base URL**: `https://openapi.felo.ai`. Override with `FELO_API_BASE` env if needed.
 - **Auth**: `Authorization: Bearer YOUR_API_KEY`
 
-### Query parameters
+### Request body (JSON)
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| video_code | string | Yes | - | YouTube video ID (e.g. dQw4w9WgXcQ) |
-| language | string | No | - | Language code (e.g. en, zh-CN) |
-| with_time | boolean | No | false | Include start/duration per segment |
+| url | string | Yes | - | Webpage URL to fetch |
+| crawl_mode | string | No | fast | `fast` or `fine` |
+| output_format | string | No | html | `html`, `text`, `markdown` |
+| with_readability | boolean | No | - | Use readability (main content) |
+| with_links_summary | boolean | No | - | Include links summary |
+| with_images_summary | boolean | No | - | Include images summary |
+| target_selector | string | No | - | CSS selector for target element |
+| wait_for_selector | string | No | - | Wait for selector before fetch |
+| timeout | integer | No | - | Timeout in milliseconds |
+| with_cache | boolean | No | true | Use cache |
 
-### Response (200)
+### Response
+
+Success (200):
 
 ```json
 {
   "code": 0,
   "message": "success",
   "data": {
-    "title": "Video title",
-    "contents": [
-      { "start": 0.32, "duration": 14.26, "text": "Subtitle text" }
-    ]
+    "content": { ... }
   }
 }
 ```
 
-With `with_time=false`, `start`/`duration` may be absent or zero. `contents[].text` is always present.
+Fetched content is in `data.content`; structure depends on `output_format`.
 
 ### Error codes
 
 | HTTP | Code | Description |
 |------|------|-------------|
-| 400 | - | Parameter validation failed (e.g. missing video_code) |
+| 400 | - | Parameter validation failed |
 | 401 | INVALID_API_KEY | API key invalid or revoked |
-| 500/502 | YOUTUBE_SUBTITLING_FAILED | Service error or subtitles unavailable for video |
+| 500/502 | WEB_EXTRACT_FAILED | Fetch failed (server or page error) |
 
 ## Output Format
 
-- Without `--json`: print title and then each segment's text (one per line or concatenated). If `--with-time`, output includes timestamps.
-- With `--json`: print full API response.
+On success (script without `--json`):
 
-On failure (no subtitles, API error): stderr message and exit 1. Example:
+- Print the fetched content only (for direct use or piping).
 
-```
-YouTube subtitling failed for video dQw4w9WgXcQ: YOUTUBE_SUBTITLING_FAILED
+With `--json`:
+
+- Print full API response including `code`, `message`, `data`.
+
+Error response to user:
+
+```markdown
+## Web Fetch Failed
+
+- Error: <code or message>
+- URL: <requested url>
+- Suggestion: <e.g. check URL, retry, or use --timeout>
 ```
 
 ## Important Notes
 
-- Not all videos have subtitles; the API may return an error for some videos.
-- Language code must match a subtitle track available for the video.
-- Same `FELO_API_KEY` as other Felo skills.
+- Always check `FELO_API_KEY` before calling; if missing, return setup instructions.
+- For long articles or slow sites, consider `--timeout` or `timeout` in request body.
+- Use `output_format: "markdown"` and `with_readability: true` for clean article text.
+- API may cache results; use `with_cache: false` in body only when fresh content is required (script does not expose this by default).
 
 ## References
 
-- [Felo YouTube Subtitling API](https://openapi.felo.ai/docs/api-reference/v2/youtube-subtitling.html)
+- [Felo Web Extract API](https://openapi.felo.ai/docs/api-reference/v2/web-extract.html)
 - [Felo Open Platform](https://openapi.felo.ai/docs/)

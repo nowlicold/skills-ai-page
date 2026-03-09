@@ -67,7 +67,20 @@ python run_win.py
 
 1. **首页**：上传 SKILL.md（或查看已有 skills）
 2. 点击某个 skill 的「使用这个 skill」→ 进入对话页
-3. 在对话里输入需求（如「搜索 苏州天气」「生成 React 入门 PPT」），Claude 会引导并在意图明确时执行该 skill（执行阶段使用 Claude Agent SDK 在临时工作区加载 SKILL.md 并跑工具）
+3. **两种使用方式**（可同时用）：
+   - **对话**：在底部输入框输入需求（如「搜索 苏州天气」），AI 引导并在意图明确时自动执行
+   - **填表执行**：若该 skill 有「填写参数」区域，直接填好参数后点「执行」即可（适合已知参数的场景）
+4. 执行结果会按类型展示：文本、链接、字幕列表、参考来源等
+
+### 4. 上传 Skill 的几种方式
+
+- **本地上传**：在首页点上传，选择本地的 `.md` 文件（如 SKILL.md）
+- **多平台适配**：若文件来自其他平台（如 Cursor、GitHub），上传后系统会先尝试按格式识别并转换元数据，再结合 Claude 分析补全；可选在调用上传 API 时传 `source_hint` 或 `origin_url` 帮助识别
+
+### 5. 可选配置
+
+- **Felo 类 Skill**（搜索、PPT、字幕等）：若 skill 的 execution 里用到 Felo API，需在 `backend/.env` 中配置 `FELO_API_KEY=你的 key`，否则 HTTP 回退执行会报错。
+- **仅用 CLI 执行**：若你已安装 Claude Code CLI 且希望「无 CLI 就报错、不自动回退」，可在前端或请求里传 `execution_mode: "sdk_only"`（默认会先尝试 CLI，失败再回退到服务端 execution）。
 
 ## 项目结构
 

@@ -223,6 +223,8 @@ class ExecuteResult(BaseModel):
     url: str | None = None
     progress: int | None = None
     error: str | None = None
+    result_format: str | None = None
+    result_data: dict | None = None
 
 
 # backend 目录下的 .env 路径（与 config_store 一致），避免从项目根启动时读不到
@@ -230,23 +232,33 @@ _BACKEND_ENV_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
 
 
 def _validate_execute_params(params: dict) -> str:
-    """校验执行参数，返回提取的 prompt；校验失败时抛出 HTTPException。"""
+    """校验执行参数，返回用于执行的 prompt（可为合成字符串）；校验失败时抛出 HTTPException。"""
     if not params:
         raise HTTPException(status_code=400, detail="缺少 parameters")
     prompt = (params.get("prompt") or params.get("query") or "").strip()
-    if not prompt:
+    if prompt:
+        return prompt
+    # 无 prompt/query 时允许仅通过表单参数执行（如 video_code），用各参数值合成 prompt
+    rest = [str(v).strip() for v in params.values() if v is not None and str(v).strip()]
+    if not rest:
         raise HTTPException(
             status_code=400,
-            detail="缺少执行参数：请在 parameters 中提供 prompt 或 query（非空字符串）",
+            detail="缺少执行参数：请提供 prompt、query 或其它必填参数",
         )
-    return prompt
+    return " ".join(rest)
 
 
-def _run_execution_spec(execution: dict, prompt: str, meta: dict) -> ExecuteResult | None:
+def _run_execution_spec(
+    execution: dict, prompt: str, meta: dict, explicit_params: dict | None = None
+) -> ExecuteResult | None:
     """若 execution 可识别则执行并返回 ExecuteResult，否则返回 None。"""
     exec_type = (execution.get("type") or "").lower()
+    result_format: str | None = None
+    result_data: dict | None = None
     if exec_type == "http":
-        ok, content = run_http_by_spec(execution, prompt)
+        ok, content, result_format, result_data = run_http_by_spec(
+            execution, prompt, explicit_params
+        )
     elif exec_type == "plan":
         ok, content = run_plan_by_spec(execution, prompt)
     elif exec_type == "ppt_task":
@@ -258,7 +270,12 @@ def _run_execution_spec(execution: dict, prompt: str, meta: dict) -> ExecuteResu
             content = present_result(content, (meta or {}).get("description", ""), prompt)
         except Exception as e:
             logging.exception("present_result 失败，已回退为原始内容: %s", e)
-        return ExecuteResult(status="success", content=content)
+        return ExecuteResult(
+            status="success",
+            content=content,
+            result_format=result_format,
+            result_data=result_data,
+        )
     return ExecuteResult(status="error", error=content)
 
 
@@ -335,7 +352,9 @@ async def execute(req: ExecuteRequest):
         # 2) 无 CLI 且非仅 SDK：有 execution 则服务端执行，否则 Messages API
         execution = (meta or {}).get("execution")
         if isinstance(execution, dict):
-            spec_result = _run_execution_spec(execution, prompt, meta)
+            spec_result = _run_execution_spec(
+                execution, prompt, meta, explicit_params=req.parameters
+            )
             if spec_result is not None:
                 return spec_result
         try:

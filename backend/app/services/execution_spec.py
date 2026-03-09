@@ -37,7 +37,7 @@ USER_AGENT = "SkillsAI-Platform/1.0 (Felo-OpenAPI-Client)"
 
 
 def _substitute(value: Any, prompt: str, params: dict[str, str]) -> Any:
-    """递归替换 {{ENV:VAR}}、{{prompt}}、{{param.xxx}}。"""
+    """递归替换 {{ENV:VAR}}、{{prompt}}、{{param.xxx}}、{{key}}（key 为 params 中的键，便于 body 直接写 {{url}} 等）。"""
     if isinstance(value, str):
         s = value
         for key, val in os.environ.items():
@@ -45,6 +45,7 @@ def _substitute(value: Any, prompt: str, params: dict[str, str]) -> Any:
         s = s.replace("{{prompt}}", prompt)
         for k, v in params.items():
             s = s.replace(f"{{{{param.{k}}}}}", v or "")
+            s = s.replace(f"{{{{{k}}}}}", v or "")
         return s
     if isinstance(value, dict):
         return {k: _substitute(v, prompt, params) for k, v in value.items()}
@@ -128,7 +129,42 @@ def _format_response(data: dict, fmt: str, spec: dict) -> str:
     return json.dumps(data, ensure_ascii=False, indent=2)
 
 
-def run_http(spec: dict, prompt: str) -> tuple[bool, str]:
+def _extract_result_data(data: dict, fmt: str, spec: dict) -> dict | None:
+    """从 API 返回中提取结构化 result_data，供前端按 result_format 渲染。"""
+    resp_cfg = spec.get("response") or {}
+    data_path = resp_cfg.get("data_path") or "data"
+    d = _get_by_path(data, data_path)
+    if not isinstance(d, dict):
+        return None
+    if fmt == "youtube_subtitles":
+        title = (d.get("title") or "").strip() or "（无标题）"
+        contents = d.get("contents") or []
+        subtitles = []
+        for seg in contents:
+            if isinstance(seg, dict) and seg.get("text") is not None:
+                subtitles.append({
+                    "start": seg.get("start"),
+                    "end": seg.get("end"),
+                    "text": (seg.get("text") or "").strip(),
+                })
+        return {"title": title, "subtitles": subtitles}
+    if fmt == "answer_sources":
+        answer = (d.get("answer") or "").strip()
+        resources = d.get("resources") or []
+        sources = []
+        for r in resources[:30]:
+            if isinstance(r, dict):
+                link = r.get("link") or r.get("url")
+                title_r = (r.get("title") or "").strip() or link or "链接"
+                if link:
+                    sources.append({"title": title_r, "url": link})
+        return {"answer": answer, "sources": sources}
+    return None
+
+
+def run_http(
+    spec: dict, prompt: str, explicit_params: dict | None = None
+) -> tuple[bool, str, str | None, dict | None]:
     """
     按 metadata.execution (type=http) 执行一次 HTTP 请求，返回 (是否成功, 内容或错误信息)。
     spec 结构示例：
@@ -146,20 +182,33 @@ def run_http(spec: dict, prompt: str) -> tuple[bool, str]:
         content_path: "data.answer"  # format=text 时
     """
     if (spec.get("type") or "").lower() != "http":
-        return False, "execution.type 非 http，无法执行"
+        return False, "execution.type 非 http，无法执行", None, None
 
-    # 1) 解析 param_extractors
+    # 1) 解析 param_extractors：优先用 explicit_params（如表单提交），否则从 prompt 提取
     params: dict[str, str] = {}
-    for param_name, extractor_name in (spec.get("param_extractors") or {}).items():
+    extractors = spec.get("param_extractors") or {}
+    for param_name, extractor_name in extractors.items():
+        if explicit_params and param_name in explicit_params:
+            v = explicit_params.get(param_name)
+            if v is not None and str(v).strip():
+                params[param_name] = str(v).strip()
+                continue
         fn = PARAM_EXTRACTORS.get(extractor_name)
         if fn and callable(fn):
             val = fn(prompt)
             params[param_name] = val if val is None else str(val)
+    # 表单/请求中的其它参数也并入 params，供 body 中 {{url}}、{{output_format}} 等占位符替换
+    if explicit_params:
+        for k, v in explicit_params.items():
+            if k in params:
+                continue
+            if v is not None and str(v).strip():
+                params[k] = str(v).strip()
 
     # 2) 替换占位符
     url = _substitute(spec.get("url") or "", prompt, params)
     if not url.strip():
-        return False, "execution.url 为空"
+        return False, "execution.url 为空", None, None
     headers = _substitute(spec.get("headers") or {}, prompt, params)
     if not isinstance(headers, dict):
         headers = {}
@@ -204,14 +253,14 @@ def run_http(spec: dict, prompt: str) -> tuple[bool, str]:
         except Exception:
             if err_body:
                 msg += f"。响应片段：{err_body[:200]}"
-        return False, msg
+        return False, msg, None, None
     except Exception as e:
-        return False, f"请求异常：{e!s}"
+        return False, f"请求异常：{e!s}", None, None
 
     try:
         data = json.loads(raw)
     except Exception:
-        return True, raw
+        return True, raw, None, None
 
     resp_cfg = spec.get("response") or {}
     fmt = resp_cfg.get("format") or "text"
@@ -229,14 +278,15 @@ def run_http(spec: dict, prompt: str) -> tuple[bool, str]:
                 if isinstance(inner.get("contents"), list) or inner.get("title") is not None:
                     pass
                 else:
-                    return False, data.get("message") or json.dumps(data, ensure_ascii=False, indent=2)
+                    return False, data.get("message") or json.dumps(data, ensure_ascii=False, indent=2), None, None
             else:
-                return False, data.get("message") or json.dumps(data, ensure_ascii=False, indent=2)
+                return False, data.get("message") or json.dumps(data, ensure_ascii=False, indent=2), None, None
     try:
         content = _format_response(data, fmt, spec)
     except Exception as e:
         content = json.dumps(data, ensure_ascii=False, indent=2) + f"\n\n(格式化异常: {e})"
-    return True, content
+    result_data = _extract_result_data(data, fmt, spec)
+    return True, content, fmt, result_data
 
 
 def run_ppt_task(spec: dict, prompt: str) -> tuple[bool, str]:

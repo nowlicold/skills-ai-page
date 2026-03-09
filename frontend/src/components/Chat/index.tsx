@@ -78,6 +78,8 @@ export function Chat() {
                         progress: m.executionResult.progress,
                         content: m.executionResult.content ?? m.content,
                         url: m.executionResult.url,
+                        result_format: m.executionResult.result_format,
+                        result_data: m.executionResult.result_data,
                       }}
                     />
                   ) : (

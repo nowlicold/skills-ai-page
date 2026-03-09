@@ -4,12 +4,24 @@ export interface UiConfig {
   output_types?: ("text" | "markdown" | "url")[]
 }
 
+/** 用于动态表单：每个参数的 schema */
+export interface ParameterSchema {
+  name: string
+  type: "string" | "number" | "url" | "youtube_video_id"
+  label?: string
+  placeholder?: string
+  required?: boolean
+  description?: string
+}
+
 export interface SkillMetadata {
   name: string
   description: string
   created_at: string
   author?: string
   ui_config: UiConfig
+  /** 可选，用于动态生成填写表单 */
+  parameters?: ParameterSchema[]
 }
 
 /** 单次执行结果，用于在消息中展示 DynamicUI */
@@ -19,6 +31,8 @@ export interface ExecutionResultPayload {
   url?: string
   progress?: number
   error?: string
+  result_format?: string
+  result_data?: Record<string, unknown>
 }
 
 export interface ChatMessage {
@@ -43,4 +57,6 @@ export interface ExecuteResult {
   url?: string
   progress?: number
   error?: string
+  result_format?: string
+  result_data?: Record<string, unknown>
 }

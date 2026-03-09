@@ -1,34 +1,65 @@
 {
   "name": "skill-uploaded",
-  "description": "通过 Felo YouTube Subtitling API 获取 YouTube 视频的字幕/字幕文本，支持指定语言和时间戳。",
-  "created_at": "2026-03-07T08:00:33.495903Z",
+  "description": "Fetch web page content from a URL using Felo Web Extract API. Use when users ask to scrape/capture/fetch webpage content, get article text from URL, convert page to markdown/text, or when explicit commands like /felo-web-fetch are used. Supports html, text, markdown output and readability mode.",
+  "created_at": "2026-03-09T01:43:23.438072Z",
   "author": "anonymous",
   "ui_config": {
     "type": "chat",
     "supports_progress": false,
     "output_types": [
-      "text",
-      "markdown"
+      "markdown",
+      "text"
     ]
   },
+  "parameters": [
+    {
+      "name": "url",
+      "type": "url",
+      "label": "网页 URL",
+      "required": true,
+      "description": "需要抓取内容的网页地址"
+    },
+    {
+      "name": "output_format",
+      "type": "string",
+      "label": "输出格式",
+      "required": false,
+      "description": "输出格式：html、text、markdown（默认 markdown）"
+    },
+    {
+      "name": "with_readability",
+      "type": "string",
+      "label": "启用可读性模式",
+      "required": false,
+      "description": "是否启用可读性处理，仅提取正文主要内容（true/false）"
+    },
+    {
+      "name": "target_selector",
+      "type": "string",
+      "label": "CSS 选择器",
+      "required": false,
+      "description": "仅抓取页面中指定 CSS 选择器匹配的元素，如 article.main、#content"
+    }
+  ],
   "execution": {
     "type": "http",
-    "method": "GET",
-    "url": "https://openapi.felo.ai/v2/youtube/subtitling",
+    "method": "POST",
+    "url": "https://openapi.felo.ai/v2/web/extract",
     "headers": {
-      "Authorization": "Bearer {{ENV:FELO_API_KEY}}"
+      "Authorization": "Bearer {{ENV:FELO_API_KEY}}",
+      "Content-Type": "application/json"
     },
-    "query_params": {
-      "video_code": "{{video_code}}"
-    },
-    "param_extractors": {
-      "video_code": "youtube_video_id"
+    "body": {
+      "url": "{{url}}",
+      "output_format": "{{output_format}}",
+      "with_readability": "{{with_readability}}",
+      "target_selector": "{{target_selector}}"
     },
     "response": {
       "success_codes": [
         0
       ],
-      "format": "youtube_subtitles"
+      "format": "text"
     }
   }
 }

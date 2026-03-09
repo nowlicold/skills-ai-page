@@ -377,6 +377,111 @@ async def execute_skill(skill_name: str, parameters: dict):
 - 画布/编辑器
 - 地图/视频
 
+#### 7. 可行性调研与实现方案：参数动态表单 + 返回动态渲染（AI Page）
+
+**能不能做？** 能。在现有「对话 + DynamicUI」上扩展即可，无需推翻重做。
+
+**目标**：skill 参数多时能**动态生成填写页**让用户好写；执行**返回内容**按类型**动态渲染**；整体做成「一个 skill 一个 AI 页」。
+
+---
+
+**怎么做（分步实现）**
+
+**Step 1：约定 metadata 里的参数 schema**
+
+- 在分析阶段（skill_analyzer）让 Claude 多输出 **`parameters`** 数组，写入 metadata，例如：
+  ```json
+  "parameters": [
+    { "name": "video_code", "type": "youtube_video_id", "label": "视频链接或 ID", "required": true, "description": "YouTube 链接或 11 位视频 ID" },
+    { "name": "language", "type": "string", "label": "字幕语言", "required": false }
+  ]
+  ```
+- 类型可先支持：`string`、`number`、`url`、`youtube_video_id`（前端可做校验/解析）。
+- **涉及**：`backend/app/services/skill_analyzer.py`（prompt 增加 parameters 输出）、`metadata.json` 结构、`frontend/src/types/api.ts` 的 `SkillMetadata` 增加 `parameters?: ParameterSchema[]`。
+
+**Step 2：前端根据 parameters 动态渲染表单**
+
+- 新增组件：`DynamicParamForm`（或放在 Chat 页上方）：根据 `parameters` 渲染输入框/下拉等，收集值为 `Record<string, unknown>`。
+- 交互：用户可**只填表**然后点「执行」；或保留现有对话，由 AI 引导填表；或「表单 + 对话」并存（表单预填，对话补充）。
+- **涉及**：`frontend/src/components/DynamicParamForm/`（新建）、Chat 页或 ChatPage 引入、执行时把表单值作为 `parameters` 传给 `POST /execute`。
+
+**Step 3：执行返回带 result_format + 结构化数据**
+
+- 后端执行层（execute 路由 + execution_spec / output_presenter）在返回里增加：
+  - `result_format`：与 `execution.response.format` 对齐（如 `text`、`url`、`youtube_subtitles`、`answer_sources`）。
+  - 可选 `result_data`：结构化数据（如 `subtitles: [{ start, end, text }]`、`sources: [{ title, url }]`），供前端专用组件渲染。
+- **涉及**：`backend/app/api/execute.py` 返回结构、`backend/app/services/execution_spec.py` 或 presenter 在 HTTP/plan 执行路径里带上 format 与 data；`frontend/src/types/api.ts` 的 `ExecutionResultPayload` 增加 `result_format?`、`result_data?`。
+
+**Step 4：前端按 result_format 动态渲染结果**
+
+- 在 DynamicUI 中根据 `result_format` 分支：`youtube_subtitles` → 字幕列表/时间轴组件；`answer_sources` → 来源卡片；`url` → LinkOutput；`text`/`markdown` → TextOutput。
+- **涉及**：`frontend/src/components/DynamicUI/index.tsx` 及新增子组件（如 `SubtitlesOutput`、`SourcesOutput`）。
+
+**Step 5：收口为「AI Page」布局**
+
+- 页面布局：顶部 skill 描述 → 参数区（DynamicParamForm 或对话）→ 执行按钮/发送 → 结果区（DynamicUI 按 result_format 渲染）。
+- 路由可沿用现有 `/chat/:skillName`，仅调整 ChatPage 布局。
+- **涉及**：`frontend/src/pages/ChatPage.tsx`、Chat 组件布局。
+
+**建议落地顺序**：Step 1（schema 约定 + 分析器）→ Step 2（动态表单）→ Step 3（返回 result_format/result_data）→ Step 4（结果组件）→ Step 5（布局收口）。可放在当前 MVP 验收后的一轮迭代。
+
+#### 8. 多平台 Skill 接入与自动化适配
+
+**场景**：用户从 Cursor、GitHub、Felo 市场、自建仓库等多渠道下载的 skill，格式/元数据位置可能不同，需要**自动识别来源并适配**为平台统一格式，保证「上传即可用」。
+
+**设计原则**
+
+- **单一 Canonical 格式**：平台内部只认一套 metadata 结构（description、parameters、ui_config、execution）。所有外部格式最终都转换为该结构。
+- **先适配、后增强**：能通过「适配器」识别的，优先用适配器产出 canonical；适配器未覆盖或字段缺失时，再用 Claude 分析补全/校验。
+- **可扩展**：新增平台时只需新增一个 Adapter 并注册，不改上传主流程。
+
+**适配流程（上传时）**
+
+1. **输入**：SKILL.md 原始内容 + 可选「来源提示」（如 URL、平台名、文件名）。
+2. **检测**：按优先级尝试各已注册适配器的 `detect(content, hints)`；第一个返回 True 的适配器进入步骤 3。
+3. **转换**：调用该适配器的 `adapt(content, hints)`，得到 canonical 片段（可能只含部分字段）。
+4. **合并与补全**：将适配器输出与现有逻辑合并：若未提供 execution/parameters 等，再调用 Claude 分析器补全；若适配器已提供，可选择性用 Claude 做一次校验或增强。
+5. **落库**：写入 `metadata.json`（与现有逻辑一致）。
+
+**适配器接口（约定）**
+
+- **detect(content: str, hints?: { url?, source?, filename? }) → bool**  
+  判断当前内容是否来自该适配器所代表的平台/格式。
+- **adapt(content: str, hints?: ...) → CanonicalFragment**  
+  从原始内容（及可选 frontmatter、侧边 JSON 等）解析并输出平台 canonical 片段。  
+  `CanonicalFragment` 至少包含：`description?: string`；可选：`parameters?`, `ui_config?`, `execution?`。缺失字段由后续 Claude 分析补全。
+
+**来源检测方式（示例）**
+
+| 方式           | 说明 |
+|----------------|------|
+| URL 模式       | 上传时若带来源 URL（如 `https://github.com/.../SKILL.md`），可据此选 GitHub 适配器。 |
+| 文件名/路径    | 若用户打包上传多文件，目录名或文件名约定（如 `cursor-skill-xxx`）可作 hint。 |
+| Frontmatter    | SKILL.md 顶部 `---` 内含 `source: cursor` / `platform: felo` 等，适配器据此识别。 |
+| 结构特征       | 如「首行为特定 JSON」「含特定 Markdown 标题结构」等，由各适配器自行实现 detect。 |
+
+**平台与适配器示例**
+
+| 平台/来源     | 检测依据（示例）           | 适配要点 |
+|---------------|----------------------------|----------|
+| Cursor Rules  | frontmatter 或路径含 cursor | 将 rule 条款映射为 description；无 execution 时依赖 Claude 推断。 |
+| Felo / 本平台 | frontmatter 含 felo 或已有 execution 结构 | 若已是 canonical 或子集，直接复用或补全。 |
+| 通用 SKILL.md | 标准 YAML frontmatter（description、triggers） | 从 frontmatter 抽 description；parameters 从 triggers/params 解析若存在。 |
+| 未知/兜底     | 所有适配器 detect 均 False | 完全依赖现有 Claude 分析器（analyze_skill），保证任意 SKILL.md 都能生成可用 metadata。 |
+
+**实现要点（代码层）**
+
+- **Adapter 注册表**：在内存中维护 `List[SkillAdapter]`，上传时顺序执行 detect，命中则 adapt。
+- **CanonicalFragment 类型**：与现有 `metadata.json` 字段对齐（description、parameters、ui_config、execution），适配器只填能填的，其余为 None。
+- **上传 API**：保持 `POST /skills/upload` 不变；可选 query/body 增加 `source_hint?: string` 或 `origin_url?: string`，传给 detect/adapt 作 hints。
+- **与 analyze_skill 的配合**：`meta = adapter.adapt(...) if detected else {}`，然后 `analyzed = analyze_skill(content)`，最后 `merged = { ...defaults, ...meta, ...analyzed }`（或按字段优先级约定合并），再写入 metadata.json。
+
+**扩展新平台时**
+
+1. 在 `skill_adapters` 包下新增模块，实现 `detect` + `adapt`。
+2. 在注册表中 `register(NewPlatformAdapter())`。
+3. 无需改动上传、执行、前端逻辑。
+
 ### Why This Approach
 
 **为什么选择对话式交互 + 动态 UI？**

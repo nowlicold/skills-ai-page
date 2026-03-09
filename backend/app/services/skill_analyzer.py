@@ -39,6 +39,7 @@ def analyze_skill(skill_md: str) -> dict:
 
 JSON 结构要求：
 - description: 一句话描述该 skill 的功能（中文），用于界面展示。
+- parameters: 可选，数组，用于动态生成填写表单。每项：{ "name": "参数名", "type": "string|number|url|youtube_video_id", "label": "显示标签", "required": true/false, "description": "说明" }。name 需与 execution 中的 param_extractors 或 body/query_params 占位符一致（如 video_code、query、prompt）。若 skill 主要靠用户输入一句话则可有 name 为 "prompt" 或 "query" 的一项。
 - ui_config: { "type": "chat", "supports_progress": false, "output_types": ["text", "markdown"] }；若 skill 会返回 URL 或需要进度条，可设 output_types 含 "url"、supports_progress 为 true。
 - execution: **仅当你能从文档中明确推断出「可执行的 HTTP/API 流程」时输出**；否则不输出 execution。
   **两种执行类型二选一：**
@@ -92,4 +93,5 @@ def _fallback_metadata(skill_md: str) -> dict:
     return {
         "description": desc[:200],
         "ui_config": {"type": "chat", "supports_progress": False, "output_types": ["text", "markdown"]},
+        "parameters": [],
     }

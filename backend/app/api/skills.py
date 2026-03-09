@@ -6,6 +6,8 @@ from dotenv import load_dotenv
 from fastapi import APIRouter, File, UploadFile, HTTPException
 
 from app.services.skill_analyzer import analyze_skill
+from app.services.skill_adapters import try_adapt
+from app.services.skill_adapters.base import UploadHints
 
 router = APIRouter()
 
@@ -33,8 +35,12 @@ def list_skills():
 
 
 @router.post("/skills/upload")
-async def upload_skill(file: UploadFile = File(...)):
-    """上传 SKILL.md，保存并用 Claude 分析生成 description、ui_config、execution（HTTP 执行规格），任意来源的 skill 均可被正确执行。"""
+async def upload_skill(
+    file: UploadFile = File(...),
+    source_hint: str | None = None,
+    origin_url: str | None = None,
+):
+    """上传 SKILL.md；多平台适配器优先识别来源并转换，再与 Claude 分析结果合并，任意来源的 skill 均可被正确执行。"""
     if not file.filename or not file.filename.endswith(".md"):
         raise HTTPException(status_code=400, detail="请上传 .md 文件")
     name = Path(file.filename).stem
@@ -49,20 +55,39 @@ async def upload_skill(file: UploadFile = File(...)):
 
     if _BACKEND_ENV.exists():
         load_dotenv(_BACKEND_ENV, override=True)
+
+    hints = UploadHints(
+        url=origin_url,
+        source=source_hint,
+        filename=file.filename,
+    )
+    adapter_fragment = try_adapt(text, hints)
     analyzed = analyze_skill(text)
+
+    # 合并：适配器提供的字段优先，其余用 Claude 分析结果
+    def _pick(key: str, default=None):
+        val = None
+        if adapter_fragment and adapter_fragment.get(key) is not None:
+            val = adapter_fragment.get(key)
+        if val is None:
+            val = analyzed.get(key)
+        return val if val is not None else default
+
     meta = {
         "name": name,
-        "description": analyzed.get("description") or "上传的 Skill",
+        "description": _pick("description") or "上传的 Skill",
         "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "author": "anonymous",
-        "ui_config": analyzed.get("ui_config") or {
+        "ui_config": _pick("ui_config") or {
             "type": "chat",
             "supports_progress": False,
             "output_types": ["text", "markdown"],
         },
     }
-    if analyzed.get("execution"):
-        meta["execution"] = analyzed["execution"]
+    if _pick("parameters") is not None:
+        meta["parameters"] = _pick("parameters")
+    if _pick("execution"):
+        meta["execution"] = _pick("execution")
     (skill_dir / "metadata.json").write_text(
         json.dumps(meta, ensure_ascii=False, indent=2),
         encoding="utf-8",
@@ -97,6 +122,10 @@ async def analyze_skill_by_name(skill_name: str):
         "author": existing.get("author", "anonymous"),
         "ui_config": analyzed.get("ui_config") or existing.get("ui_config") or {"type": "chat", "supports_progress": False, "output_types": ["text", "markdown"]},
     }
+    if analyzed.get("parameters") is not None:
+        meta["parameters"] = analyzed["parameters"]
+    elif "parameters" in existing:
+        meta["parameters"] = existing["parameters"]
     if analyzed.get("execution"):
         meta["execution"] = analyzed["execution"]
     elif "execution" in existing:
