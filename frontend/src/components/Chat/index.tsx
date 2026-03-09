@@ -5,7 +5,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { DynamicUI, TextOutput } from "@/components/DynamicUI"
 import { useChatStore } from "@/store/useChatStore"
 import { useSkillsStore } from "@/store/useSkillsStore"
-import { Send } from "lucide-react"
+import { Loader2, Send } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { UiConfig } from "@/types/api"
 
@@ -25,6 +25,8 @@ export function Chat() {
     error,
     sendMessage,
     clearError,
+    retryExecute,
+    lastExecuteParams,
   } = useChatStore()
   const { skills } = useSkillsStore()
   const uiConfig = skillName
@@ -71,17 +73,29 @@ export function Chat() {
               >
                 {m.role === "assistant" ? (
                   m.executionResult ? (
-                    <DynamicUI
-                      uiConfig={uiConfig}
-                      data={{
-                        status: m.executionResult.status,
-                        progress: m.executionResult.progress,
-                        content: m.executionResult.content ?? m.content,
-                        url: m.executionResult.url,
-                        result_format: m.executionResult.result_format,
-                        result_data: m.executionResult.result_data,
-                      }}
-                    />
+                    <div className="space-y-2">
+                      <DynamicUI
+                        uiConfig={uiConfig}
+                        data={{
+                          status: m.executionResult.status,
+                          progress: m.executionResult.progress,
+                          content: m.executionResult.content ?? m.content,
+                          url: m.executionResult.url,
+                          result_format: m.executionResult.result_format,
+                          result_data: m.executionResult.result_data,
+                        }}
+                      />
+                      {m.executionResult.status === "error" && lastExecuteParams && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => retryExecute()}
+                          disabled={loading}
+                        >
+                          重试
+                        </Button>
+                      )}
+                    </div>
                   ) : (
                     <TextOutput content={m.content} />
                   )
@@ -93,8 +107,9 @@ export function Chat() {
           ))}
           {loading && (
             <div className="flex justify-start">
-              <div className="rounded-lg bg-muted px-4 py-2 text-muted-foreground">
-                思考中…
+              <div className="flex items-center gap-2 rounded-lg bg-muted px-4 py-2 text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" aria-hidden />
+                处理中…
               </div>
             </div>
           )}
@@ -103,8 +118,11 @@ export function Chat() {
       </ScrollArea>
 
       {error && (
-        <div className="border-t px-4 py-2 text-sm text-destructive">
-          {error}
+        <div className="flex flex-wrap items-center gap-2 border-t px-4 py-2 text-sm text-destructive">
+          <span className="flex-1">{error}</span>
+          <Button variant="ghost" size="sm" onClick={() => retryExecute().then(clearError)}>
+            重试
+          </Button>
           <Button variant="ghost" size="sm" onClick={clearError}>
             关闭
           </Button>

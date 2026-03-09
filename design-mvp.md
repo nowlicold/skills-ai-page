@@ -693,32 +693,26 @@ async def execute_skill(skill_name: str, parameters: dict):
 
 ## 实现符合度（与当前代码对齐）
 
-> 最后核对：2026-03-07
+> 最后核对：2026-03-09
 
 ### 需求点清单
 
-| #   | 需求点                | 状态    | 说明                                                                                                                                         |
-| --- | --------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | 上传/获取 skill       | ✅      | 有上传（POST /skills/upload）、列表（GET /skills）；上传后固定生成 metadata，无 Claude 分析                                                  |
-| 2   | 有界面                | ✅      | SkillList → 选 skill → ChatPage 对话页                                                                                                       |
-| 3   | 填写方式 = 交互式对话 | ✅      | 对话引导，`ready_to_execute` + `parameters` 后调 `/execute`                                                                                  |
-| 4   | 可选：简单表单        | ⚠️ 未做 | 仅对话，无表单兜底（设计为可选）                                                                                                             |
-| 5   | 代为执行              | ✅      | execute.py：临时目录映射 + Agent SDK；无 CLI 时 Felo 直连 / Messages API 回退                                                                |
-| 6   | 结果展示              | ⚠️ 部分 | 有 TextOutput/LinkOutput/ProgressBar 与 DynamicUI；执行结果目前当纯文本/Markdown 展示，未按 ui_config 走 DynamicUI（如 url 未用 LinkOutput） |
+| #   | 需求点                | 状态 | 说明                                                                                                                                 |
+| --- | --------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | 上传/获取 skill       | ✅   | 上传（POST /skills/upload）、从链接导入（POST /skills/import-from-url）、列表（GET /skills）；上传/导入后 Claude 分析 + 多平台适配器生成 metadata |
+| 2   | 有界面                | ✅   | SkillList → 选 skill → ChatPage（描述 + 参数区 + 对话/结果区）                                                                        |
+| 3   | 填写方式 = 交互式对话 | ✅   | 对话引导，`ready_to_execute` + `parameters` 后调 `/execute`                                                                          |
+| 4   | 可选：简单表单        | ✅   | DynamicParamForm 按 metadata.parameters 渲染表单，填表即可执行；与对话并存                                                           |
+| 5   | 代为执行              | ✅   | execute.py：临时目录映射 + Agent SDK；无 CLI 时 execution 回退（HTTP/plan）；参数按 schema 校验                                       |
+| 6   | 结果展示              | ✅   | DynamicUI 按 result_format 分支：字幕、来源、链接、文本等；执行中 loading、失败可重试                                                   |
 
-### 架构差异（相对设计文档）
+### 架构与实现要点
 
-- **未单独实现**：`skill_analyzer.py`、`ui_generator.py`、`agent_executor.py`、`file_storage.py`；逻辑合并进 `skills.py`、`execute.py`、`skill_loader.py`。
-- **已有且符合**：`skills.py`（CRUD/上传）、`chat.py`（对话 + 工具/READY_TO_EXECUTE）、`execute.py`（工作区准备 + SDK + Felo 回退）、`skill_loader.py`、`config_store.py` + config API（API Key 注入）。
+- **已有**：`skill_analyzer.py`（分析 SKILL.md）、`skill_adapters`（Cursor/GitHub/Frontmatter）、`skills.py`（上传/导入/列表）、`chat.py`、`execute.py`（含 `_validate_parameters_schema`）、`execution_spec`（HTTP/plan，result_format + result_data）、前端 DynamicParamForm、DynamicUI。**result_format 支持**：`text`、`url`、`youtube_subtitles`、`answer_sources`、`web_page`（标题+正文）、`list`（条目列表，含 title/url/description）。
+- **体验**：执行中「处理中…」+ 动画；错误态「重试」+「关闭」；空状态「暂无 skill，请先上传或从链接导入」。
 
 ### 设计文档中的 Blocker / 要求
 
-- **对话 → 执行协议**：✅ 已实现（`ready_to_execute`、`parameters`、前端自动调 `/execute`）。
-- **执行前参数校验**：⚠️ 未做：仅取 `prompt`/`query`，未按 skill 的 parameters schema 做类型/必填/长度校验（设计 5. 执行 Skills 要求）。
-- **API Key**：✅ 后端 .env + 对话中 save_config 写入，符合 Open Question 0 建议。
-
-### 建议的后续补齐（优先级）
-
-1. **结果展示**：执行返回 `url`/`progress` 时，前端按当前 skill 的 `ui_config` 用 DynamicUI 渲染（LinkOutput/ProgressBar），而不是仅把 content 当消息文本。
-2. **参数校验**：在执行前对 `parameters` 做基本校验（必填、类型），与 skill 分析结果一致（若引入 skill 分析则用其 schema）。
-3. **（可选）Skill 分析**：上传时用 Claude 分析 SKILL.md 生成 description、ui_config、parameters，替代固定「上传的 Skill」与固定 ui_config。
+- **对话 → 执行协议**：✅ 已实现。
+- **执行前参数校验**：✅ 已实现（按 metadata.parameters 必填/类型/长度）。
+- **API Key**：✅ 后端 .env；Felo 类 skill 需 FELO_API_KEY，见 README。

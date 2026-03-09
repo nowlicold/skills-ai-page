@@ -120,6 +120,37 @@ def _format_response(data: dict, fmt: str, spec: dict) -> str:
             return f"## 视频标题\n\n{title}\n\n（该视频暂无可用字幕。）"
         return f"## 视频标题\n\n{title}\n\n## 字幕\n\n" + "\n\n".join(lines)
 
+    if fmt == "web_page":
+        inner = _get_by_path(data, resp_cfg.get("data_path") or "data")
+        if isinstance(inner, dict):
+            title = (inner.get("title") or "").strip() or ""
+            content = (inner.get("content") or inner.get("text") or "").strip()
+            if title:
+                return f"## {title}\n\n{content}" if content else f"## {title}"
+            if content:
+                return content
+        return json.dumps(data, ensure_ascii=False, indent=2)
+
+    if fmt == "list":
+        inner = _get_by_path(data, resp_cfg.get("data_path") or "data")
+        items = []
+        if isinstance(inner, list):
+            items = inner[:30]
+        elif isinstance(inner, dict) and "items" in inner:
+            items = inner["items"][:30] if isinstance(inner["items"], list) else []
+        lines = []
+        for it in items:
+            if isinstance(it, dict):
+                title = (it.get("title") or it.get("name") or "").strip() or "（无标题）"
+                url = it.get("url") or it.get("link")
+                if url:
+                    lines.append(f"- [{title}]({url})")
+                else:
+                    lines.append(f"- {title}")
+            elif isinstance(it, str):
+                lines.append(f"- {it}")
+        return "\n".join(lines) if lines else json.dumps(data, ensure_ascii=False, indent=2)
+
     # text: 单一路径取字符串
     content_path = resp_cfg.get("content_path")
     if content_path:
@@ -159,6 +190,23 @@ def _extract_result_data(data: dict, fmt: str, spec: dict) -> dict | None:
                 if link:
                     sources.append({"title": title_r, "url": link})
         return {"answer": answer, "sources": sources}
+    if fmt == "web_page":
+        title = (d.get("title") or "").strip() or ""
+        content = (d.get("content") or d.get("text") or "").strip()
+        return {"title": title, "content": content}
+    if fmt == "list":
+        raw = d.get("items") if isinstance(d.get("items"), list) else []
+        items = []
+        for it in raw[:30]:
+            if isinstance(it, dict):
+                items.append({
+                    "title": (it.get("title") or it.get("name") or "").strip() or "（无标题）",
+                    "url": it.get("url") or it.get("link"),
+                    "description": (it.get("description") or "").strip() or None,
+                })
+            elif isinstance(it, str):
+                items.append({"title": it, "url": None, "description": None})
+        return {"items": items}
     return None
 
 

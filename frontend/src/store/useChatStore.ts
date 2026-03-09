@@ -8,9 +8,11 @@ interface ChatState {
   messages: ChatMessage[]
   loading: boolean
   error: string | null
+  lastExecuteParams: Record<string, unknown> | null
   setSkill: (name: string, description: string) => void
   sendMessage: (content: string) => Promise<void>
   executeWithParams: (params: Record<string, unknown>) => Promise<void>
+  retryExecute: () => Promise<void>
   reset: () => void
   clearError: () => void
 }
@@ -23,6 +25,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   loading: false,
   error: null,
+  lastExecuteParams: null,
 
   setSkill: (name, description) => {
     set({
@@ -96,6 +99,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         },
       ],
       loading: true,
+      lastExecuteParams: params,
     }))
     try {
       const result = await api.execute(skillName, params)
@@ -151,6 +155,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
+  retryExecute: async () => {
+    const { lastExecuteParams, skillName } = get()
+    if (!skillName || !lastExecuteParams) return
+    set({ error: null })
+    await get().executeWithParams(lastExecuteParams)
+  },
+
   reset: () =>
     set({
       skillName: null,
@@ -158,6 +169,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       messages: [],
       loading: false,
       error: null,
+      lastExecuteParams: null,
     }),
 
   clearError: () => set({ error: null }),

@@ -1,9 +1,11 @@
 import type { UiConfig } from "@/types/api"
 import { LinkOutput } from "./LinkOutput"
+import { ListOutput } from "./ListOutput"
 import { ProgressBar } from "./ProgressBar"
 import { SourcesOutput } from "./SourcesOutput"
 import { SubtitlesOutput } from "./SubtitlesOutput"
 import { TextOutput } from "./TextOutput"
+import { WebPageOutput } from "./WebPageOutput"
 
 interface DynamicUIProps {
   uiConfig: UiConfig
@@ -42,10 +44,33 @@ export function DynamicUI({ uiConfig, data }: DynamicUIProps) {
       />
     )
   }
+  if (format === "web_page" && rd) {
+    return (
+      <WebPageOutput
+        title={rd.title as string | undefined}
+        content={rd.content as string | undefined}
+      />
+    )
+  }
+  if (format === "list" && rd && Array.isArray(rd.items)) {
+    return (
+      <ListOutput
+        items={rd.items as { title?: string; url?: string; description?: string }[]}
+      />
+    )
+  }
   if (data.content) {
     return <TextOutput content={data.content} />
   }
   return null
 }
 
-export { ProgressBar, LinkOutput, TextOutput, SubtitlesOutput, SourcesOutput }
+export {
+  ProgressBar,
+  LinkOutput,
+  TextOutput,
+  SubtitlesOutput,
+  SourcesOutput,
+  WebPageOutput,
+  ListOutput,
+}

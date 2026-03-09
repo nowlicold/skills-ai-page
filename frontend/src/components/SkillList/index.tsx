@@ -51,10 +51,15 @@ export function SkillList() {
   if (error) {
     return (
       <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
-        {error}
-        <Button variant="ghost" size="sm" className="ml-2" onClick={clearError}>
-          关闭
-        </Button>
+        <span>{error}</span>
+        <div className="mt-2 flex gap-2">
+          <Button variant="outline" size="sm" onClick={fetchSkills}>
+            重试
+          </Button>
+          <Button variant="ghost" size="sm" onClick={clearError}>
+            关闭
+          </Button>
+        </div>
       </div>
     )
   }
@@ -65,7 +70,10 @@ export function SkillList() {
 
   if (skills.length === 0) {
     return (
-      <p className="text-muted-foreground">暂无 skills，请先上传 SKILL.md</p>
+      <div className="rounded-lg border border-dashed bg-muted/30 px-4 py-8 text-center text-muted-foreground">
+        <p className="font-medium">暂无 skill</p>
+        <p className="mt-1 text-sm">请先上传 SKILL.md 或从链接导入</p>
+      </div>
     )
   }
 
