@@ -26,6 +26,8 @@ export interface SkillMetadata {
   ui_config: UiConfig
   /** 可选，用于动态生成填写表单 */
   parameters?: ParameterSchema[]
+  /** 可选，该 skill 依赖的环境变量名（如 FELO_API_KEY），供部署方配置参考 */
+  required_env?: string[]
 }
 
 /** 单次执行结果，用于在消息中展示 DynamicUI */

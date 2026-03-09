@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 import urllib.request
@@ -13,6 +14,31 @@ from app.services.skill_adapters import try_adapt
 from app.services.skill_adapters.base import UploadHints
 
 router = APIRouter()
+
+_ENV_PLACEHOLDER_RE = re.compile(r"\{\{ENV:([A-Za-z0-9_]+)\}\}")
+
+
+def _extract_required_env(obj: dict | list | str) -> list[str]:
+    """从 execution（或任意嵌套结构）中提取 {{ENV:VAR_NAME}} 出现的变量名，去重并保持顺序。"""
+    seen: set[str] = set()
+    result: list[str] = []
+
+    def _walk(o):
+        if isinstance(o, dict):
+            for v in o.values():
+                _walk(v)
+        elif isinstance(o, list):
+            for v in o:
+                _walk(v)
+        elif isinstance(o, str):
+            for m in _ENV_PLACEHOLDER_RE.finditer(o):
+                name = m.group(1)
+                if name not in seen:
+                    seen.add(name)
+                    result.append(name)
+
+    _walk(obj)
+    return result
 
 SKILLS_DIR = Path(__file__).resolve().parent.parent.parent / "skills"
 SKILLS_DIR.mkdir(parents=True, exist_ok=True)
@@ -31,6 +57,8 @@ def list_skills():
             if meta.exists():
                 try:
                     data = json.loads(meta.read_text(encoding="utf-8"))
+                    if "required_env" not in data and data.get("execution"):
+                        data["required_env"] = _extract_required_env(data["execution"])
                     result.append(data)
                 except Exception:
                     pass
@@ -91,6 +119,10 @@ async def upload_skill(
         meta["parameters"] = _pick("parameters")
     if _pick("execution"):
         meta["execution"] = _pick("execution")
+    if _pick("required_env") is not None:
+        meta["required_env"] = _pick("required_env")
+    elif meta.get("execution"):
+        meta["required_env"] = _extract_required_env(meta["execution"])
     (skill_dir / "metadata.json").write_text(
         json.dumps(meta, ensure_ascii=False, indent=2),
         encoding="utf-8",
@@ -172,6 +204,10 @@ async def import_skill_from_url(body: ImportFromUrlRequest):
         meta["parameters"] = _pick("parameters")
     if _pick("execution"):
         meta["execution"] = _pick("execution")
+    if _pick("required_env") is not None:
+        meta["required_env"] = _pick("required_env")
+    elif meta.get("execution"):
+        meta["required_env"] = _extract_required_env(meta["execution"])
     (skill_dir / "metadata.json").write_text(
         json.dumps(meta, ensure_ascii=False, indent=2),
         encoding="utf-8",
@@ -214,5 +250,11 @@ async def analyze_skill_by_name(skill_name: str):
         meta["execution"] = analyzed["execution"]
     elif "execution" in existing:
         meta["execution"] = existing["execution"]
+    if analyzed.get("required_env") is not None:
+        meta["required_env"] = analyzed["required_env"]
+    elif "required_env" in existing:
+        meta["required_env"] = existing["required_env"]
+    elif meta.get("execution"):
+        meta["required_env"] = _extract_required_env(meta["execution"])
     meta_file.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
     return meta

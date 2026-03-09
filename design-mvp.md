@@ -183,6 +183,8 @@ skills/
 
 **metadata.json 格式：**
 
+- **required_env**（可选）：字符串数组，列出该 skill 执行时依赖的环境变量名（如 `FELO_API_KEY`）。部署方据此在服务端配置对应环境变量；不存密钥本身，仅声明「需要配置哪些 key」。可由分析器从 execution 中的 `{{ENV:VAR_NAME}}` 占位符自动提取，或由适配器/手动填写。
+
 ```json
 {
   "name": "felo-search",
@@ -193,7 +195,8 @@ skills/
     "type": "chat",
     "supports_progress": false,
     "output_types": ["text", "markdown"]
-  }
+  },
+  "required_env": ["FELO_API_KEY"]
 }
 ```
 
@@ -595,11 +598,10 @@ async def execute_skill(skill_name: str, parameters: dict):
 
 ## Open Questions
 
-### 0. Skill 所需 API Key / Token（MVP 需约定）
+### 0. Skill 所需 API Key / Token（已决策）
 
-- **问题**：felo-search、felo-slides 等若依赖外部 API Key 或 Token，存放位置与访问方式未定义。
-- **建议**：MVP 仅通过**后端环境变量或密钥服务**注入，不写进代码、不落库、不随 skill 内容或日志输出；设计文档与实现中明确「哪些 key 由谁配置」。
-- **决策时机**：Phase 2 前与 Phase 5 实现前确认。
+- **决策**：在 **metadata 中增加 `required_env`**（字符串数组），列出该 skill 依赖的环境变量名（如 `FELO_API_KEY`）。不存密钥值，仅声明「需要配置哪些 key」，供部署方与文档使用。
+- **实现**：密钥仍仅通过**后端环境变量或密钥服务**注入；`required_env` 可由分析器从 execution 的 `{{ENV:VAR_NAME}}` 自动提取，或由适配器/手动填写。
 
 ### 1. 安全性问题（后面迭代）
 
